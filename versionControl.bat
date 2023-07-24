@@ -1,1 +1,1 @@
-python "C:\Users\kurok\Desktop\pythonFiles\versionControl\client.py"
+python " ~abs path to the client.py file~ "

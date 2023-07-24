@@ -1,0 +1,1 @@
+python "C:\Users\kurok\Desktop\pythonFiles\versionControl\client.py"

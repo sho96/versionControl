@@ -4,7 +4,7 @@ import threading
 import os
 import shutil
 
-masterdirectory = "./projects/"
+masterdirectory = "/home/pi/Desktop/versionControl/projects/"
 
 def sendhuge(client, data) -> None:
     length = len(data)
@@ -126,6 +126,13 @@ def handleClient(client, address):
                 filename = recvhuge(client).decode("utf-8")
                 createSets(masterdirectory, projName, version)
                 recvfile(client, os.path.join(masterdirectory, projName, version, filename))
+            if recved == b"saveall":
+                version = recvhuge(client).decode("utf-8")
+                numOfFiles = int(recvhuge(client).decode("utf-8"))
+                for i in range(numOfFiles):
+                    filename = recvhuge(client).decode("utf-8")
+                    createSets(masterdirectory, projName, version)
+                    recvfile(client, os.path.join(masterdirectory, projName, version, filename))
             if recved == b"load":
                 version = recvhuge(client).decode("utf-8")
                 filename = recvhuge(client).decode("utf-8")
@@ -188,8 +195,9 @@ def handleClient(client, address):
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s.connect(("8.8.8.8", 80))
 ip = s.getsockname()[0]
+print(ip)
 s.close()
-port = 54321
+port = int(input("port: "))
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 print(f"binding server with {ip}:{port}")
@@ -200,8 +208,9 @@ print(f"server running with ip: {ip} and port: {port}")
 
 availableCommands = {
     "save":"upload a file to the server",
+    "saveall":"upload files in a selected directory to the server",
     "load":"download a file from the server",
-    "loadall":"upload files in a selected directory to the server",
+    "loadall":"download files from a selected version",
     "delv":"delete version",
     "delf":"delete file",
     "delp":"delete project",

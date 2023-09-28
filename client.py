@@ -64,11 +64,13 @@ def sendfile(client, path):
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.settimeout(3)
 ip, port = input("ip: "), int(input("port: "))
+ip = ip.replace("lan", "192.168")
 try:
     client.connect((ip, port))
 except socket.timeout:
     print(f"no response from  {ip}:{port}")
     sys.exit()
+client.settimeout(None)
 cwd = os.getcwd()
 
 localCommands = {
@@ -106,6 +108,7 @@ while True:
             print(f"sending... {i+1} / {len(files)}")
             sendhuge(client, f"{file}".encode("utf-8"))
             sendfile(client, os.path.join(directory, file))
+        print("sent")
 
     if cmd == "load":
         version = input("version: ")
@@ -182,7 +185,7 @@ while True:
         os.mkdir(os.path.join(cwd, dirname))
     if cmd == "help":
         print(recvhuge(client).decode("utf-8"))
-        print(f"available local commands: {localCommands.keys()}")
+        print(f"available local commands: {list(localCommands.keys())}")
     if cmd == "helpcmd":
         command = input("command: ")
         sendhuge(client, command.encode("utf-8"))

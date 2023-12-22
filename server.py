@@ -115,16 +115,22 @@ def findLatest(master, proj):
 
 
 def handleClient(client, address):
-    print("waiting for password auth for client: ", address)
-    receivedHashedPassword = recvhuge(client).decode("utf-8")
-    print(hashedPassword)
-    print(receivedHashedPassword)
-    if receivedHashedPassword != hashedPassword:
-        sendhuge(client, b"denied")
-        client.close()
-        return
-    sendhuge(client, b"granted")
-
+    if hashedPassword != hashlib.sha256(b"").hexdigest():
+        sendhuge(client, b"auth")
+        try:
+            print("waiting for password auth for client: ", address)
+            receivedHashedPassword = recvhuge(client).decode("utf-8")
+        except ValueError:
+            print(f"unknown format encountered with client: {address}")
+            client.close()
+            return
+        if receivedHashedPassword != hashedPassword:
+            sendhuge(client, b"denied")
+            client.close()
+            return
+        sendhuge(client, b"granted")
+    else:
+        sendhuge(client, b"no auth")
     projName = ""
     while True:
         try:

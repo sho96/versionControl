@@ -120,11 +120,14 @@ localCommands = {
 updateSettings("ip", ip)
 updateSettings("port", port)
 
-sendhuge(client, hashlib.sha256(getpass().encode("utf-8")).hexdigest().encode("utf-8"))
-authResult = recvhuge(client).decode("utf-8")
-print(authResult)
-if authResult == "denied":
-    sys.exit()
+hasAuth = recvhuge(client).decode("utf-8") == "auth"
+if hasAuth:
+    print("this server requires authentication")
+    sendhuge(client, hashlib.sha256(getpass().encode("utf-8")).hexdigest().encode("utf-8"))
+    authResult = recvhuge(client).decode("utf-8")
+    print(authResult)
+    if authResult == "denied":
+        sys.exit()
 
 cwproj = loadSettingValue("proj")
 

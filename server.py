@@ -117,6 +117,7 @@ def findLatest(master, proj):
 def handleClient(client, address):
     print("waiting for password auth for client: ", address)
     receivedHashedPassword = recvhuge(client).decode("utf-8")
+    print(hashedPassword)
     print(receivedHashedPassword)
     if receivedHashedPassword != hashedPassword:
         sendhuge(client, b"denied")
@@ -185,7 +186,7 @@ def handleClient(client, address):
                 treestr = treeDir(os.path.join(masterdirectory, projName))
                 sendhuge(client, treestr.encode("utf-8"))
             if recved == b"listprojs":
-                projects = os.listdir(masterdirectory)
+                projects = sorted(os.listdir(masterdirectory))
                 sendhuge(client, "\n".join(projects).encode("utf-8"))
             if recved == b"exit":
                 raise BrokenPipeError()
@@ -215,8 +216,8 @@ def handleClient(client, address):
 hashedPassword = hashlib.sha256(b"").hexdigest()
 if os.path.exists("./.password"):
     with open("./.password", "r") as f:
-        hashedPassword = f.read()
-print(hashedPassword)
+        hashedPassword = f.read().replace("\n", "").replace(" ", "")
+    print("password loaded")
 
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s.connect(("8.8.8.8", 80))

@@ -4,7 +4,7 @@ import threading
 import os
 import shutil
 
-masterdirectory = "/home/pi/Desktop/versionControl/projects/"
+masterdirectory = "./projects/"
 
 def sendhuge(client, data) -> None:
     length = len(data)

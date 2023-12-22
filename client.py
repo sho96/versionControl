@@ -122,7 +122,7 @@ updateSettings("port", port)
 
 hasAuth = recvhuge(client).decode("utf-8") == "auth"
 if hasAuth:
-    print("this server requires authentication")
+    print("this server requires password authentication")
     sendhuge(client, hashlib.sha256(getpass().encode("utf-8")).hexdigest().encode("utf-8"))
     authResult = recvhuge(client).decode("utf-8")
     print(authResult)

@@ -4,6 +4,7 @@ import threading
 import os
 import shutil
 import hashlib
+from datetime import datetime
 
 masterdirectory = "./projects/"
 
@@ -12,6 +13,9 @@ def sendhuge(client, data) -> None:
     client.send(f"{length}\n".encode("ascii"))
     client.sendall(data)
 
+def log(message):
+    print(f"[{datetime.now()}] {message}")
+    
 def recvhuge(client) -> bytes:
     length = b""
     while True:
@@ -118,10 +122,10 @@ def handleClient(client, address):
     if hashedPassword != hashlib.sha256(b"").hexdigest():
         sendhuge(client, b"auth")
         try:
-            print("waiting for password auth for client: ", address)
+            log(f"waiting for password auth for client: {address}")
             receivedHashedPassword = recvhuge(client).decode("utf-8")
         except ValueError:
-            print(f"unknown format encountered with client: {address}")
+            log(f"unknown format encountered with client: {address}")
             client.close()
             return
         if receivedHashedPassword != hashedPassword:
@@ -137,10 +141,10 @@ def handleClient(client, address):
             try:
                 recved = recvhuge(client)
             except ValueError:
-                print(f"unknown format encountered with client: {address}")
+                log(f"unknown format encountered with client: {address}")
                 client.close()
                 raise BrokenPipeError()
-            print(recved)
+            log(f"{address}: {recved}")
             if recved == b'':
                 raise BrokenPipeError()
             if recved == b"save":
@@ -215,7 +219,7 @@ def handleClient(client, address):
                     continue
                 sendhuge(client, availableCommands[cmd].encode("utf-8"))
         except BrokenPipeError:
-            print(address, "disconnected.")
+            log(f"{address} disconnected.")
             client.close()
             break
 
@@ -223,20 +227,20 @@ hashedPassword = hashlib.sha256(b"").hexdigest()
 if os.path.exists("./.password"):
     with open("./.password", "r") as f:
         hashedPassword = f.read().replace("\n", "").replace(" ", "")
-    print("password loaded")
+    log("password loaded")
 
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s.connect(("8.8.8.8", 80))
 ip = s.getsockname()[0]
 s.close()
-port = 60000
+port = 62000
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-print(f"binding server with {ip}:{port}")
+log(f"binding server with {ip}:{port}")
 server.bind((ip, port))
 server.listen()
 
-print(f"server running with ip: {ip} and port: {port}")
+log(f"server running with ip: {ip} and port: {port}")
 
 createDir(masterdirectory)
 
@@ -264,4 +268,4 @@ while True:
     client, address = server.accept()
     thread = threading.Thread(target=handleClient, args=(client, address))
     thread.start()
-    print(address, "connected")
+    log(f"{address} connected")

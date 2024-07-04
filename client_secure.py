@@ -1,4 +1,4 @@
-#1.1.3
+#1.2.1
 import socket
 import os
 import sys
@@ -17,7 +17,7 @@ def sendhuge(client, data) -> None:
     client.sendall(data)
 
 
-def sendhuge_secure(client, data, key) -> None:
+def sendhuge_secure(client, data, key, show_percentage=False) -> None:
     key_length = len(key)
     length = len(data)
     client.send(f"{length}\n".encode("ascii"))
@@ -32,9 +32,11 @@ def sendhuge_secure(client, data, key) -> None:
         else:
             sending_bytes = raw_bytes + key_to_apply
         client.sendall(sending_bytes)
-        precentage = i/length*100
-        print(f"\r{precentage} %", end="")
-    
+        if show_percentage:
+            precentage = i/length*100
+            print(f"\r{precentage:.2f} %", end="")
+    if show_percentage:
+        print(f"\r100 %")
 def recvhuge(client) -> bytes:
     length = b""
     while True:
@@ -78,8 +80,8 @@ def recvhuge_secure(client, key) -> bytes:
             buffer = client.recv(optimal_packet_size)
             key_to_apply = key * (len(buffer) // key_length)
             recved += (np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes()
-        if length - len(recved) < optimal_packet_size and len(client.recv(length - len(recved), socket.MSG_PEEK)) == length - len(recved):
-            buffer = client.recv(optimal_packet_size)
+        elif length - len(recved) < optimal_packet_size and len(client.recv(length - len(recved), socket.MSG_PEEK)) == length - len(recved):
+            buffer = client.recv(length - len(recved))
             key_to_apply = (key * ceil(len(buffer) / key_length))[:len(buffer)]
             recved += (np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes()
         if len(recved) == length:
@@ -116,7 +118,7 @@ def recvfile(client, path) -> int:
     print(f"\r100 % in {round(time.perf_counter() - start_time, 3)}s\n")
     return length
 
-def recvfile_secure(client, path, key) -> bytes:
+def recvfile_secure(client, path, key) -> int:
     length = b""
     while True:
         if client.recv(1, socket.MSG_PEEK) == 0:
@@ -131,28 +133,28 @@ def recvfile_secure(client, path, key) -> bytes:
     print(f"receiving {length} bytes")
     start_time = time.perf_counter()
     key_length = len(key)
-    recved = b""
     buffer = b""
     optimal_packet_size = ceil((4096 - key_length * 2) / key_length) * key_length
     total_length = 0
     with open(path, "wb") as file:
         while True:
-            if len(client.recv(length - len(recved), socket.MSG_PEEK)) >= optimal_packet_size:
+            #print(f"length: {length} total: {total_length}", end="\r")
+            if len(client.recv(length - total_length, socket.MSG_PEEK)) >= optimal_packet_size:
                 buffer = client.recv(optimal_packet_size)
                 total_length += len(buffer)
                 key_to_apply = key * (len(buffer) // key_length)
                 file.write((np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes())
-            if length - len(recved) < optimal_packet_size and len(client.recv(length - len(recved), socket.MSG_PEEK)) == length - len(recved):
-                buffer = client.recv(optimal_packet_size)
+            elif length - total_length < optimal_packet_size and len(client.recv(length - total_length, socket.MSG_PEEK)) == length - total_length:
+                buffer = client.recv(length - total_length)
                 total_length += len(buffer)
                 key_to_apply = (key * ceil(len(buffer) / key_length))[:len(buffer)]
                 file.write((np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes())
             if total_length == length:
                 break
-            precentage = len(recved)/length*100
-            print(f"\r{precentage} %", end="")
+            precentage = total_length/length*100
+            print(f"\r{precentage:.2f} %", end="")
     print(f"\r100 % in {round(time.perf_counter() - start_time, 3)}s\n")
-    return recved
+    return length
 
 def sendfile(client, path):
     with open(path, "rb") as f:
@@ -160,7 +162,7 @@ def sendfile(client, path):
 
 def sendfile_secure(client, path, key):
     with open(path, "rb") as f:
-        sendhuge_secure(client, f.read(), key)
+        sendhuge_secure(client, f.read(), key, show_percentage=True)
 
 def updateSettings(key, value):
     with open(settingsPath, "r") as f:
@@ -239,6 +241,8 @@ print()
 
 while True:
     cmd = input(">> ")
+    if cmd == "":
+        continue
     sendhuge_secure(client, cmd.encode("utf-8"), encryption_key)
     if cmd == "save":
         version = input("version: ")
@@ -262,7 +266,28 @@ while True:
             sendhuge_secure(client, f"{file}".encode("utf-8"), encryption_key)
             sendfile_secure(client, os.path.join(directory, file), encryption_key)
         print("sent")
-
+    if cmd == "save!":
+        version = input("version: ")
+        path = input("path: ")
+        if not os.path.isabs(path):
+            path = os.path.join(cwd, path)
+        filename = os.path.split(path)[1]
+        sendhuge(client, version.encode("utf-8"))
+        sendhuge(client, filename.encode("utf-8"))
+        sendfile(client, path)
+    if cmd == "saveall!":
+        version = input("version: ")
+        directory = input("directory: ")
+        if directory == "":
+            directory = cwd
+        files = [file for file in os.listdir(directory) if os.path.isfile(os.path.join(directory, file))]
+        sendhuge(client, version.encode("utf-8"))
+        sendhuge(client, f"{len(files)}".encode("utf-8"))
+        for i, file in enumerate(files):
+            print(f"sending... {file} {i+1} / {len(files)}")
+            sendhuge(client, f"{file}".encode("utf-8"))
+            sendfile(client, os.path.join(directory, file))
+        print("sent")
     if cmd == "load":
         version = input("version: ")
         filename = input("filename: ")
@@ -280,6 +305,24 @@ while True:
             filename = recvhuge_secure(client, encryption_key).decode("utf-8")
             print(f"receiving... {filename} {i+1} / {numOfFiles}")
             recvfile_secure(client, os.path.join(cwd, filename), encryption_key)
+            print()
+    if cmd == "load!":
+        version = input("version: ")
+        filename = input("filename: ")
+        sendhuge(client, version.encode("utf-8"))
+        sendhuge(client, filename.encode("utf-8"))
+        recvfile(client, os.path.join(cwd, filename))
+    if cmd == "loadall!":
+        version = input("version: ")
+        directory = input("directory: ")
+        if directory == "":
+            directory = cwd
+        sendhuge(client, version.encode("utf-8"))
+        numOfFiles = int(recvhuge(client).decode("utf-8"))
+        for i in range(numOfFiles):
+            filename = recvhuge(client).decode("utf-8")
+            print(f"receiving... {filename} {i+1} / {numOfFiles}")
+            recvfile(client, os.path.join(cwd, filename))
             print()
     if cmd == "delf":
         version = input("version: ")

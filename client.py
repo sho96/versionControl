@@ -238,22 +238,24 @@ create_config_file(config_file_path, {"proj": "versionControl", "ip": "not set",
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.settimeout(3)
 
-ip = input("ip (leave blank for default): ")
+ip = input_prompt("ip (leave blank for default): ")
 if ip == "":
     ip = load_config_values("ip")
     if ip == "not set":
-        print("default ip still not specified")
+        print_info("default ip still not specified")
         sys.exit()
     port = load_config_values("port")
     
 else:
-    port = int(input("port: "))
+    port = int(input_prompt("port: "))
 ip = ip.replace("lan", "192.168")
 
+print()
 try:
+    print(f"connecting to {ip}:{port}")
     client.connect((ip, port))
 except socket.timeout:
-    print(f"no response from {ip}:{port}")
+    print_failed("no response")
     sys.exit()
 client.settimeout(10)
 cwd = os.getcwd()
@@ -276,8 +278,8 @@ if hasAuth:
     encryption_key = getpass().encode("utf-8")
     sendhuge(client, hashlib.sha256(encryption_key).hexdigest().encode("utf-8"))
     authResult = recvhuge(client).decode("utf-8")
-    print(authResult)
-    if authResult == "denied":
+    if authResult != "granted":
+        print_failed("authentication failed")
         sys.exit()
 
 cwproj = load_config_values("proj")
@@ -285,9 +287,9 @@ cwproj = load_config_values("proj")
 sendhuge_secure(client, b'setproj', encryption_key)
 sendhuge_secure(client, cwproj.encode("utf-8"), encryption_key)
 print()
-print_info("---------- connected -----------")
-print_info(f" server:  {ip}:{port}")
-print_info(f" project: {cwproj}")
+print_success("---------- connected -----------")
+print_success(f" server:  {ip}:{port}")
+print_success(f" project: {cwproj}")
 print()
 
 while True:
@@ -463,3 +465,5 @@ while True:
         print_info(recvhuge_secure(client, encryption_key).decode("utf-8"))
     if cmd == "exit":
         sys.exit()
+        
+    print()

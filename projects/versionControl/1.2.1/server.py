@@ -37,7 +37,7 @@ def sendhuge_secure(client, data, key, show_percentage=False) -> None:
             precentage = i/length*100
             print(f"\r{precentage:.2f} %", end="")
     if show_percentage:
-        print(f"\r100 %")
+        print("\r100 %")
 
 def log(message):
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
@@ -61,7 +61,7 @@ def recvhuge(client) -> bytes:
             break
         precentage = len(recved)/length*100
         print(f"\r{precentage} %", end="")
-    print(f"\r100 %")
+    print("\r100 %")
     return recved
 
 def recvhuge_secure(client, key) -> bytes:
@@ -93,7 +93,7 @@ def recvhuge_secure(client, key) -> bytes:
             break
         precentage = len(recved)/length*100
         print(f"\r{precentage} %", end="")
-    print(f"\r100 %")
+    print("\r100 %")
     return recved
 
 def recvfile(client, path) -> int:
@@ -118,7 +118,7 @@ def recvfile(client, path) -> int:
             break
         precentage = total_length/length*100
         print(f"\r{precentage:.2f} %", end="")
-    print(f"\r100 %")
+    print("\r100 %")
     return length
 
 def recvfile_secure(client, path, key) -> int:
@@ -332,10 +332,17 @@ def handle_client(client, address):
                     sendhuge_secure(client, f.read(), encryption_key)
             if recved == b'updateserver':
                 latest_version = find_latest(master_directory, "versionControl")
-                with open(os.path.join(master_directory, "versionControl", latest_version, "server.py"), "rb") as f:
-                    content = f.read()
-                with open(__file__, "wb") as f:
-                    f.write(content)
+                with open(__file__, "r") as f:
+                    top_line = f.readline().replace("\n", "")
+                sendhuge_secure(client, pickle.dumps((top_line, latest_version)), encryption_key)
+                if recvhuge_secure(client, encryption_key).decode("utf-8") == "y":
+                    with open(os.path.join(master_directory, "versionControl", latest_version, "server.py"), "rb") as f:
+                        content = f.read()
+                    with open(__file__, "wb") as f:
+                        f.write(content)
+                    sendhuge_secure(client, "updated".encode("utf-8"), encryption_key)
+                else:
+                    sendhuge_secure(client, "not updated".encode("utf-8"), encryption_key)
             if recved == b'help':
                 sendhuge_secure(client, pickle.dumps(available_commands), encryption_key)
             if recved == b'helpcmd':

@@ -10,7 +10,7 @@ from getpass import getpass
 import numpy as np
 import pickle
 
-settingsPath = os.path.join(os.getcwd(), ".versionControl")
+config_file_path = os.path.join(os.getcwd(), ".versionControl")
 
 def sendhuge(client, data) -> None:
     length = len(data)
@@ -35,9 +35,9 @@ def sendhuge_secure(client, data, key, show_percentage=False) -> None:
         client.sendall(sending_bytes)
         if show_percentage:
             precentage = i/length*100
-            print(f"\r{precentage:.2f} %", end="")
+            print(f"\r{precentage:.3f} %", end="")
     if show_percentage:
-        print(f"\r100 %")
+        print("\r100 %")
 def recvhuge(client) -> bytes:
     length = b""
     while True:
@@ -55,9 +55,6 @@ def recvhuge(client) -> bytes:
         recved += client.recv(length - len(recved))
         if len(recved) == length:
             break
-        precentage = len(recved)/length*100
-        print(f"\r{precentage} %", end="")
-    print(f"\r100 %")
     return recved
 
 def recvhuge_secure(client, key) -> bytes:
@@ -87,9 +84,6 @@ def recvhuge_secure(client, key) -> bytes:
             recved += (np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes()
         if len(recved) == length:
             break
-        precentage = len(recved)/length*100
-        print(f"\r{precentage} %", end="")
-    print(f"\r100 %")
     return recved
 
 def recvfile(client, path) -> int:
@@ -103,9 +97,11 @@ def recvfile(client, path) -> int:
         if recved == b'':
             return b""
         length += recved
+
+    start_time = time.perf_counter()
+    
     length = int(length)
     print(f"receiving {length} bytes")
-    start_time = time.perf_counter()
     file = open(path, "wb")
     total_length = 0
     while True:
@@ -116,7 +112,7 @@ def recvfile(client, path) -> int:
             break
         precentage = total_length/length*100
         print(f"\r{precentage} %", end="")
-    print(f"\r100 % in {round(time.perf_counter() - start_time, 3)}s\n")
+    print(f"\rreceived {length} bytes in {time.perf_counter() - start_time:.3f}s\n")
     return length
 
 def recvfile_secure(client, path, key) -> int:
@@ -154,7 +150,7 @@ def recvfile_secure(client, path, key) -> int:
                 break
             precentage = total_length/length*100
             print(f"\r{precentage:.2f} %", end="")
-    print(f"\r100 % in {round(time.perf_counter() - start_time, 3)}s\n")
+    print(f"\rreceived {length} bytes in {time.perf_counter() - start_time:.3f}s")
     return length
 
 def sendfile(client, path):
@@ -165,36 +161,36 @@ def sendfile_secure(client, path, key):
     with open(path, "rb") as f:
         sendhuge_secure(client, f.read(), key, show_percentage=True)
 
-def updateSettings(key, value):
-    with open(settingsPath, "r") as f:
-        currentSettings = json.loads(f.read())
-    with open(settingsPath, "w") as f:
-        currentSettings[key] = value
-        f.write(json.dumps(currentSettings))
+def update_config(key, value):
+    with open(config_file_path, "r") as f:
+        current_config = json.loads(f.read())
+    with open(config_file_path, "w") as f:
+        current_config[key] = value
+        f.write(json.dumps(current_config))
 
-def loadSettingValue(key):
-    with open(settingsPath, "r") as f:
-        currentSettings = json.loads(f.read())
-    return currentSettings[key]
+def load_config_values(key):
+    with open(config_file_path, "r") as f:
+        current_config = json.loads(f.read())
+    return current_config[key]
 
-def createSettingsFile(path, defaultValues):
+def create_config_file(path, default_values):
     if os.path.exists(path):
         return False
     with open(path, "w") as f:
-        f.write(json.dumps(defaultValues))
+        f.write(json.dumps(default_values))
 
-createSettingsFile(settingsPath, {"proj": "versionControl", "ip": "not set", "port": 0})
+create_config_file(config_file_path, {"proj": "versionControl", "ip": "not set", "port": 0})
 
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.settimeout(3)
 
 ip = input("ip (leave blank for default): ")
 if ip == "":
-    ip = loadSettingValue("ip")
+    ip = load_config_values("ip")
     if ip == "not set":
         print("default ip still not specified")
         sys.exit()
-    port = loadSettingValue("port")
+    port = load_config_values("port")
     
 else:
     port = int(input("port: "))
@@ -216,8 +212,8 @@ localCommands = {
     "getcwd": " Show current working directory ",
 }
 
-updateSettings("ip", ip)
-updateSettings("port", port)
+update_config("ip", ip)
+update_config("port", port)
 
 hasAuth = recvhuge(client).decode("utf-8") == "auth"
 encryption_key = b"0"
@@ -230,7 +226,7 @@ if hasAuth:
     if authResult == "denied":
         sys.exit()
 
-cwproj = loadSettingValue("proj")
+cwproj = load_config_values("proj")
 
 sendhuge_secure(client, b'setproj', encryption_key)
 sendhuge_secure(client, cwproj.encode("utf-8"), encryption_key)
@@ -339,7 +335,7 @@ while True:
     if cmd == "setproj":
         projName = input("project name: ")
         sendhuge_secure(client, projName.encode("utf-8"), encryption_key)
-        updateSettings("proj", projName)
+        update_config("proj", projName)
     if cmd == "tree":
         print(recvhuge_secure(client, encryption_key).decode("utf-8"))
     if cmd == "listproj":
@@ -404,5 +400,10 @@ while True:
         print("updated")
         sendhuge_secure(client, "exit".encode("utf-8"), encryption_key)
         sys.exit()
+    if cmd == "updateserver":
+        top_line, latest_version = pickle.loads(recvhuge_secure(client, encryption_key))
+        print(f"update server?\nCurrent version: {top_line}Found latest version: {latest_version}")
+        sendhuge_secure(client, input("(y/n) -> ").encode("utf-8"), encryption_key)
+        print(recvhuge_secure(client, encryption_key).decode("utf-8"))
     if cmd == "exit":
         sys.exit()

@@ -1,10 +1,14 @@
-#1.1.3
+#1.2.1
 import socket
 import threading
 import os
 import shutil
 import hashlib
 from datetime import datetime
+import numpy as np
+import time
+from math import ceil
+import pickle
 
 master_directory = "./projects/"
 
@@ -13,8 +17,30 @@ def sendhuge(client, data) -> None:
     client.send(f"{length}\n".encode("ascii"))
     client.sendall(data)
 
+
+def sendhuge_secure(client, data, key, show_percentage=False) -> None:
+    key_length = len(key)
+    length = len(data)
+    client.send(f"{length}\n".encode("ascii"))
+    sending_bytes = b""
+    packet_size = ceil((4096 - key_length * 2) / key_length) * key_length
+    
+    key_to_apply = np.frombuffer((key * ceil(length / key_length))[:packet_size], dtype=np.uint8)
+    for i in range(0, length, packet_size):
+        raw_bytes = np.frombuffer(data[i: i+packet_size], dtype=np.uint8)
+        if i + packet_size >= length:
+            sending_bytes = raw_bytes + key_to_apply[:len(raw_bytes)]
+        else:
+            sending_bytes = raw_bytes + key_to_apply
+        client.sendall(sending_bytes)
+        if show_percentage:
+            precentage = i/length*100
+            print(f"\r{precentage:.2f} %", end="")
+    if show_percentage:
+        print("\r100 %")
+
 def log(message):
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
     
 def recvhuge(client) -> bytes:
     length = b""
@@ -35,7 +61,39 @@ def recvhuge(client) -> bytes:
             break
         precentage = len(recved)/length*100
         print(f"\r{precentage} %", end="")
-    print(f"\r100 %")
+    print("\r100 %")
+    return recved
+
+def recvhuge_secure(client, key) -> bytes:
+    length = b""
+    while True:
+        if client.recv(1, socket.MSG_PEEK) == 0:
+            continue
+        recved = client.recv(1)
+        if recved == b'\n':
+            break
+        if recved == b'':
+            return b""
+        length += recved
+    length = int(length)
+    key_length = len(key)
+    recved = b""
+    buffer = b""
+    optimal_packet_size = ceil((4096 - key_length * 2) / key_length) * key_length
+    while True:
+        if len(client.recv(length - len(recved), socket.MSG_PEEK)) >= optimal_packet_size:
+            buffer = client.recv(optimal_packet_size)
+            key_to_apply = key * (len(buffer) // key_length)
+            recved += (np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes()
+        elif length - len(recved) < optimal_packet_size and len(client.recv(length - len(recved), socket.MSG_PEEK)) == length - len(recved):
+            buffer = client.recv(length - len(recved))
+            key_to_apply = (key * ceil(len(buffer) / key_length))[:len(buffer)]
+            recved += (np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes()
+        if len(recved) == length:
+            break
+        precentage = len(recved)/length*100
+        print(f"\r{precentage} %", end="")
+    print("\r100 %")
     return recved
 
 def recvfile(client, path) -> int:
@@ -59,9 +117,48 @@ def recvfile(client, path) -> int:
         if total_length == length:
             break
         precentage = total_length/length*100
-        print(f"\r{precentage} %", end="")
-    print(f"\r100 %")
+        print(f"\r{precentage:.2f} %", end="")
+    print("\r100 %")
     return length
+
+def recvfile_secure(client, path, key) -> int:
+    length = b""
+    while True:
+        if client.recv(1, socket.MSG_PEEK) == 0:
+            continue
+        recved = client.recv(1)
+        if recved == b'\n':
+            break
+        if recved == b'':
+            return b""
+        length += recved
+    length = int(length)
+    print(f"receiving {length} bytes")
+    start_time = time.perf_counter()
+    key_length = len(key)
+    buffer = b""
+    optimal_packet_size = ceil((4096 - key_length * 2) / key_length) * key_length
+    total_length = 0
+    with open(path, "wb") as file:
+        while True:
+            #print(f"length: {length} total: {total_length}", end="\r")
+            if len(client.recv(length - total_length, socket.MSG_PEEK)) >= optimal_packet_size:
+                buffer = client.recv(optimal_packet_size)
+                total_length += len(buffer)
+                key_to_apply = key * (len(buffer) // key_length)
+                file.write((np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes())
+            elif length - total_length < optimal_packet_size and len(client.recv(length - total_length, socket.MSG_PEEK)) == length - total_length:
+                buffer = client.recv(length - total_length)
+                total_length += len(buffer)
+                key_to_apply = (key * ceil(len(buffer) / key_length))[:len(buffer)]
+                file.write((np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes())
+            if total_length == length:
+                break
+            precentage = total_length/length*100
+            print(f"\r{precentage:.2f} %", end="")
+    print(f"\r100 % in {round(time.perf_counter() - start_time, 3)}s\n")
+    return length
+
 
 def tree_dir(path) -> str:
     result = ""
@@ -124,7 +221,7 @@ def handle_client(client, address):
         try:
             log(f"waiting for password auth for client: {address}")
             received_hashed_password = recvhuge(client).decode("utf-8")
-        except ValueError:
+        except ValueError as e:
             log(f"unknown format encountered with client: {address}")
             client.close()
             return
@@ -135,25 +232,39 @@ def handle_client(client, address):
         sendhuge(client, b"granted")
     else:
         sendhuge(client, b"no auth")
-        
+    
     project_name = ""
     while True:
         try:
             try:
-                recved = recvhuge(client)
-            except ValueError:
-                log(f"unknown format encountered with client: {address}\n{recved[:100]}")
+                recved = recvhuge_secure(client, encryption_key)
+            except ValueError as e:
+                log(f"unknown format encountered with client: {address}")
+                print(e)
                 client.close()
                 raise BrokenPipeError()
+            
             log(f"{address}: {recved}")
             if recved == b'':
                 raise BrokenPipeError()
             if recved == b"save":
+                version = recvhuge_secure(client, encryption_key).decode("utf-8")
+                filename = recvhuge_secure(client, encryption_key).decode("utf-8")
+                create_sets(master_directory, project_name, version)
+                recvfile_secure(client, os.path.join(master_directory, project_name, version, filename), encryption_key)
+            if recved == b"saveall":
+                version = recvhuge_secure(client, encryption_key).decode("utf-8")
+                n_files = int(recvhuge_secure(client, encryption_key).decode("utf-8"))
+                for _ in range(n_files):
+                    filename = recvhuge_secure(client, encryption_key).decode("utf-8")
+                    create_sets(master_directory, project_name, version)
+                    recvfile_secure(client, os.path.join(master_directory, project_name, version, filename), encryption_key)
+            if recved == b"save!":
                 version = recvhuge(client).decode("utf-8")
                 filename = recvhuge(client).decode("utf-8")
                 create_sets(master_directory, project_name, version)
                 recvfile(client, os.path.join(master_directory, project_name, version, filename))
-            if recved == b"saveall":
+            if recved == b"saveall!":
                 version = recvhuge(client).decode("utf-8")
                 n_files = int(recvhuge(client).decode("utf-8"))
                 for _ in range(n_files):
@@ -161,11 +272,25 @@ def handle_client(client, address):
                     create_sets(master_directory, project_name, version)
                     recvfile(client, os.path.join(master_directory, project_name, version, filename))
             if recved == b"load":
+                version = recvhuge_secure(client, encryption_key).decode("utf-8")
+                filename = recvhuge_secure(client, encryption_key).decode("utf-8")
+                with open(os.path.join(master_directory, project_name, version, filename), "rb") as f:
+                    sendhuge_secure(client, f.read(), encryption_key, show_percentage=True)
+            if recved == b'loadall':
+                version = recvhuge_secure(client, encryption_key).decode("utf-8")
+                parent_dir = os.path.join(master_directory, project_name, version)
+                sendhuge_secure(client, f"{len(os.listdir(parent_dir))}".encode("utf-8"), encryption_key)
+                for filename in os.listdir(parent_dir):
+                    abspath = os.path.join(parent_dir, filename)
+                    sendhuge_secure(client, filename.encode("utf-8"), encryption_key)
+                    with open(abspath, "rb") as f:
+                        sendhuge_secure(client, f.read(), encryption_key, show_percentage=True)
+            if recved == b"load!":
                 version = recvhuge(client).decode("utf-8")
                 filename = recvhuge(client).decode("utf-8")
                 with open(os.path.join(master_directory, project_name, version, filename), "rb") as f:
                     sendhuge(client, f.read())
-            if recved == b'loadall':
+            if recved == b'loadall!':
                 version = recvhuge(client).decode("utf-8")
                 parent_dir = os.path.join(master_directory, project_name, version)
                 sendhuge(client, f"{len(os.listdir(parent_dir))}".encode("utf-8"))
@@ -175,59 +300,68 @@ def handle_client(client, address):
                     with open(abspath, "rb") as f:
                         sendhuge(client, f.read())
             if recved == b"delv":
-                version = recvhuge(client).decode("utf-8")
+                version = recvhuge_secure(client, encryption_key).decode("utf-8")
                 shutil.rmtree(os.path.join(master_directory, project_name, version))
             if recved == b"delf":
-                version = recvhuge(client).decode("utf-8")
-                filename = recvhuge(client).decode("utf-8")
+                version = recvhuge_secure(client, encryption_key).decode("utf-8")
+                filename = recvhuge_secure(client, encryption_key).decode("utf-8")
                 os.remove(os.path.join(master_directory, project_name, version, filename))
             if recved == b"delp":
-                proj = recvhuge(client).decode("utf-8")
+                proj = recvhuge_secure(client, encryption_key).decode("utf-8")
                 if proj == "versionControl":
                     continue
                 shutil.rmtree(os.path.join(master_directory, proj))
             if recved == b"setproj":
-                project_name = recvhuge(client).decode("utf-8")
+                project_name = recvhuge_secure(client, encryption_key).decode("utf-8")
             if recved == b"getcwproj":
-                sendhuge(client, project_name.encode("utf-8"))
+                sendhuge_secure(client, project_name.encode("utf-8"), encryption_key)
             if recved == b"tree":
                 treestr = tree_dir(master_directory)
-                sendhuge(client, treestr.encode("utf-8"))
+                sendhuge_secure(client, treestr.encode("utf-8"), encryption_key)
             if recved == b"listproj":
                 treestr = tree_dir(os.path.join(master_directory, project_name))
-                sendhuge(client, treestr.encode("utf-8"))
+                sendhuge_secure(client, treestr.encode("utf-8"), encryption_key)
             if recved == b"listprojs":
                 projects = sorted(os.listdir(master_directory))
-                sendhuge(client, "\n".join(projects).encode("utf-8"))
+                sendhuge_secure(client, "\n".join(projects).encode("utf-8"), encryption_key)
             if recved == b"exit":
                 raise BrokenPipeError()
             if recved == b'update':
                 latest_version = find_latest(master_directory, "versionControl")
                 with open(os.path.join(master_directory, "versionControl", latest_version, "client.py"), "rb") as f:
-                    sendhuge(client, f.read())
+                    sendhuge_secure(client, f.read(), encryption_key)
             if recved == b'updateserver':
                 latest_version = find_latest(master_directory, "versionControl")
-                with open(os.path.join(master_directory, "versionControl", latest_version, "server.py"), "rb") as f:
-                    content = f.read()
-                with open(__file__, "wb") as f:
-                    f.write(content)
+                with open(__file__, "r") as f:
+                    top_line = f.readline().replace("\n", "")
+                sendhuge_secure(client, pickle.dumps((top_line, latest_version)), encryption_key)
+                if recvhuge_secure(client, encryption_key).decode("utf-8") == "y":
+                    with open(os.path.join(master_directory, "versionControl", latest_version, "server.py"), "rb") as f:
+                        content = f.read()
+                    with open(__file__, "wb") as f:
+                        f.write(content)
+                    sendhuge_secure(client, "updated".encode("utf-8"), encryption_key)
+                else:
+                    sendhuge_secure(client, "not updated".encode("utf-8"), encryption_key)
             if recved == b'help':
-                sendhuge(client, f"available commands {list(available_commands.keys())}".encode("utf-8"))
+                sendhuge_secure(client, pickle.dumps(available_commands), encryption_key)
             if recved == b'helpcmd':
-                cmd = recvhuge(client).decode("utf-8")
+                cmd = recvhuge_secure(client, encryption_key).decode("utf-8")
                 if cmd not in available_commands:
-                    sendhuge(client, "not found".encode("utf-8"))
+                    sendhuge_secure(client, "not found".encode("utf-8"), encryption_key)
                     continue
-                sendhuge(client, available_commands[cmd].encode("utf-8"))
+                sendhuge_secure(client, available_commands[cmd].encode("utf-8"), encryption_key)
         except BrokenPipeError:
             log(f"{address} disconnected.")
             client.close()
             break
 
 hashed_password = hashlib.sha256(b"").hexdigest()
+encryption_key = b"0"
 if os.path.exists("./.password"):
     with open("./.password", "r") as f:
-        hashed_password = f.read().replace("\n", "").replace(" ", "")
+        encryption_key = f.read().replace("\n", "").replace(" ", "").encode("utf-8")
+        hashed_password = hashlib.sha256(encryption_key).hexdigest()
     log("password loaded")
 
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -246,23 +380,27 @@ log(f"server running with ip: {ip} and port: {port}")
 create_dir(master_directory)
 
 available_commands = {
-    "save":"upload a file to the server",
-    "saveall":"upload files in a selected directory to the server",
-    "load":"download a file from the server",
-    "loadall":"download files from a selected version",
-    "delv":"delete version",
-    "delf":"delete file",
-    "delp":"delete project",
-    "setproj":"set current working project",
-    "getcwproj":"get current working project",
-    "tree":"trees all the projects",
-    "listproj":"list files inside the current working project",
-    "listprojs":"list all projects",
-    "help":"displays all available commands",
-    "helpcmd":"displays what a certain command does",
-    "update":"downloads the latest client file",
-    "updateserver":"updates the server to the latest version",
-    "exit":"exit",
+    "save": " Upload a file to the server ",
+    "saveall": " Upload all files in the cwd to the server ",
+    "load": " Download a file from the server ",
+    "loadall": " Download files from a selected version to cwd ",
+    "save!": " fast but insecure version of `save` ",
+    "saveall!": " fast but insecure version of `saveall` ",
+    "load!": " fast but insecure version of `load` ",
+    "loadall!": " fast but insecure version of `loadall` ",
+    "setproj": " Set the current working project ",
+    "exit": " Exit ",
+    "delv": " Delete version in the current project ",
+    "delf": " Delete file in the current project ",
+    "delp": " Delete project with project name specified ",
+    "listproj": " Show project tree ",
+    "listprojs": " Show all projects ",
+    "tree": " Show the entire tree ",
+    "getcwproj": " Show the current working project ",
+    "help": " List all commands ",
+    "helpcmd": " See what the provided command does ",
+    "update": " Download and update client.py file ",
+    "updateserver": " Update the server to the latest version ",
 }
 
 while True:

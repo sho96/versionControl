@@ -8,6 +8,7 @@ import hashlib
 from math import ceil
 from getpass import getpass
 import numpy as np
+import pickle
 
 settingsPath = os.path.join(os.getcwd(), ".versionControl")
 
@@ -209,10 +210,10 @@ cwd = os.getcwd()
 
 
 localCommands = {
-    "list":"list files and folders in current working dire1ctory", 
-    "cd":"change directory", 
-    "getcwd":"get current working directory", 
-    "mkdir":"make directory",
+    "cd": " Change cwd ",
+    "mkdir": " Create directory ",
+    "ls": " List files in cwd ",
+    "getcwd": " Show current working directory ",
 }
 
 updateSettings("ip", ip)
@@ -345,7 +346,7 @@ while True:
         print(recvhuge_secure(client, encryption_key).decode("utf-8"))
     if cmd == "listprojs":
         print(recvhuge_secure(client, encryption_key).decode("utf-8"))
-    if cmd == "list":
+    if cmd == "ls":
         print()
         dirs = []
         files = []
@@ -380,8 +381,13 @@ while True:
             continue
         os.mkdir(os.path.join(cwd, dirname))
     if cmd == "help":
-        print(recvhuge_secure(client, encryption_key).decode("utf-8"))
-        print(f"available local commands: {list(localCommands.keys())}")
+        server_cmds = pickle.loads(recvhuge_secure(client, encryption_key))
+        print("available server commands:")
+        for cmd in server_cmds:
+            print(f"    {cmd:<20}{server_cmds[cmd]}")
+        print("available local commands:")
+        for cmd in localCommands:
+            print(f"    {cmd:<20}{localCommands[cmd]}")
     if cmd == "helpcmd":
         command = input("command: ")
         sendhuge_secure(client, command.encode("utf-8"), encryption_key)

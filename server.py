@@ -8,6 +8,7 @@ from datetime import datetime
 import numpy as np
 import time
 from math import ceil
+import pickle
 
 master_directory = "./projects/"
 
@@ -336,7 +337,7 @@ def handle_client(client, address):
                 with open(__file__, "wb") as f:
                     f.write(content)
             if recved == b'help':
-                sendhuge_secure(client, f"available commands {list(available_commands.keys())}".encode("utf-8"), encryption_key)
+                sendhuge_secure(client, pickle.dumps(available_commands), encryption_key)
             if recved == b'helpcmd':
                 cmd = recvhuge_secure(client, encryption_key).decode("utf-8")
                 if cmd not in available_commands:
@@ -372,23 +373,27 @@ log(f"server running with ip: {ip} and port: {port}")
 create_dir(master_directory)
 
 available_commands = {
-    "save":"upload a file to the server",
-    "saveall":"upload files in a selected directory to the server",
-    "load":"download a file from the server",
-    "loadall":"download files from a selected version",
-    "delv":"delete version",
-    "delf":"delete file",
-    "delp":"delete project",
-    "setproj":"set current working project",
-    "getcwproj":"get current working project",
-    "tree":"trees all the projects",
-    "listproj":"list files inside the current working project",
-    "listprojs":"list all projects",
-    "help":"displays all available commands",
-    "helpcmd":"displays what a certain command does",
-    "update":"downloads the latest client file",
-    "updateserver":"updates the server to the latest version",
-    "exit":"exit",
+    "save": " Upload a file to the server ",
+    "saveall": " Upload all files in the cwd to the server ",
+    "load": " Download a file from the server ",
+    "loadall": " Download files from a selected version to cwd ",
+    "save!": " fast but insecure version of `save` ",
+    "saveall!": " fast but insecure version of `saveall` ",
+    "load!": " fast but insecure version of `load` ",
+    "loadall!": " fast but insecure version of `loadall` ",
+    "setproj": " Set the current working project ",
+    "exit": " Exit ",
+    "delv": " Delete version in the current project ",
+    "delf": " Delete file in the current project ",
+    "delp": " Delete project with project name specified ",
+    "listproj": " Show project tree ",
+    "listprojs": " Show all projects ",
+    "tree": " Show the entire tree ",
+    "getcwproj": " Show the current working project ",
+    "help": " List all commands ",
+    "helpcmd": " See what the provided command does ",
+    "update": " Download and update client.py file ",
+    "updateserver": " Update the server to the latest version ",
 }
 
 while True:

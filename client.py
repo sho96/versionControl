@@ -402,7 +402,7 @@ while True:
         sys.exit()
     if cmd == "updateserver":
         top_line, latest_version = pickle.loads(recvhuge_secure(client, encryption_key))
-        print(f"update server?\nCurrent version: {top_line}Found latest version: {latest_version}")
+        print(f"update server?\nCurrent version: {top_line}\nFound latest version: {latest_version}")
         sendhuge_secure(client, input("(y/n) -> ").encode("utf-8"), encryption_key)
         print(recvhuge_secure(client, encryption_key).decode("utf-8"))
     if cmd == "exit":

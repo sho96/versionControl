@@ -356,7 +356,7 @@ while True:
         numOfFiles = int(recvhuge_secure(client, encryption_key).decode("utf-8"))
         for i in range(numOfFiles):
             filename = recvhuge_secure(client, encryption_key).decode("utf-8")
-            print(f"receiving... {filename} {i+1} / {numOfFiles}")
+            print(f"receiving {filename} ({i+1}/{numOfFiles})")
             recvfile_secure(client, os.path.join(cwd, filename), encryption_key)
             print()
         print_success(f"loaded {numOfFiles} files")
@@ -404,7 +404,7 @@ while True:
         print()
         dirs = []
         files = []
-        for element in os.listdir(cwd):
+        for element in sorted(os.listdir(cwd)):
             if os.path.isfile(os.path.join(cwd, element)):
                 files.append(element)
             else:

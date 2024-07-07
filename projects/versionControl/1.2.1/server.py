@@ -173,6 +173,8 @@ def tree_dir(path) -> str:
 def tree_dir_ordered(path, level=0, show_top_dir=False) -> str:
     result = ""
     tab = "    "
+    if not os.path.exists(path):
+        return ""
     if show_top_dir:
         result += f"{tab * level}-{os.path.basename(path)}\n"
         level += 1

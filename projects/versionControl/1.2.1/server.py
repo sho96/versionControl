@@ -166,8 +166,24 @@ def tree_dir(path) -> str:
     for root, dirs, files in os.walk(path):
         level = root.replace(path, '').count(os.sep)
         result += f"{tab * level}{'-'+os.path.basename(root)}\n"
-        for f in files:
+        for f in sorted(files):
             result += f"{tab * (level+1)}{f}\n"
+    return result
+
+def tree_dir_ordered(path, level=0, show_top_dir=False) -> str:
+    result = ""
+    tab = "    "
+    if show_top_dir:
+        result += f"{tab * level}-{os.path.basename(path)}\n"
+        level += 1
+    all_pathes = sorted(os.listdir(path))
+    dirs = [name for name in all_pathes if os.path.isdir(os.path.join(path, name))]
+    files = [name for name in all_pathes if os.path.isfile(os.path.join(path, name))]
+    for d in dirs:
+        result += f"{tab * level}-{d}\n"
+        result += tree_dir_ordered(os.path.join(path, d), level+1)
+    for f in files:
+        result += f"{tab * level} {f}\n"
     return result
 
 def create_dir(path):
@@ -214,6 +230,12 @@ def find_latest(master, proj):
         chosen = list(left)
     return ".".join([str(char) for char in chosen[0]])
 
+def prevent_path_injection(path) -> str:
+    parts = path.split(os.sep)
+    symbols_to_avoid = ("..", "~", ".", "*", "**")
+    parts = [part for part in parts if part not in symbols_to_avoid]
+    return (os.sep).join(parts)
+
 
 def handle_client(client, address):
     if hashed_password != hashlib.sha256(b"").hexdigest():
@@ -251,75 +273,75 @@ def handle_client(client, address):
                 version = recvhuge_secure(client, encryption_key).decode("utf-8")
                 filename = recvhuge_secure(client, encryption_key).decode("utf-8")
                 create_sets(master_directory, project_name, version)
-                recvfile_secure(client, os.path.join(master_directory, project_name, version, filename), encryption_key)
+                recvfile_secure(client, prevent_path_injection(os.path.join(master_directory, project_name, version, filename)), encryption_key)
             if recved == b"saveall":
                 version = recvhuge_secure(client, encryption_key).decode("utf-8")
                 n_files = int(recvhuge_secure(client, encryption_key).decode("utf-8"))
                 for _ in range(n_files):
                     filename = recvhuge_secure(client, encryption_key).decode("utf-8")
                     create_sets(master_directory, project_name, version)
-                    recvfile_secure(client, os.path.join(master_directory, project_name, version, filename), encryption_key)
+                    recvfile_secure(client, prevent_path_injection(os.path.join(master_directory, project_name, version, filename)), encryption_key)
             if recved == b"!save":
                 version = recvhuge(client).decode("utf-8")
                 filename = recvhuge(client).decode("utf-8")
                 create_sets(master_directory, project_name, version)
-                recvfile(client, os.path.join(master_directory, project_name, version, filename))
+                recvfile(client, prevent_path_injection(os.path.join(master_directory, project_name, version, filename)))
             if recved == b"!saveall":
                 version = recvhuge(client).decode("utf-8")
                 n_files = int(recvhuge(client).decode("utf-8"))
                 for _ in range(n_files):
                     filename = recvhuge(client).decode("utf-8")
                     create_sets(master_directory, project_name, version)
-                    recvfile(client, os.path.join(master_directory, project_name, version, filename))
+                    recvfile(client, prevent_path_injection(os.path.join(master_directory, project_name, version, filename)))
             if recved == b"load":
                 version = recvhuge_secure(client, encryption_key).decode("utf-8")
                 filename = recvhuge_secure(client, encryption_key).decode("utf-8")
-                with open(os.path.join(master_directory, project_name, version, filename), "rb") as f:
+                with open(prevent_path_injection(os.path.join(master_directory, project_name, version, filename)), "rb") as f:
                     sendhuge_secure(client, f.read(), encryption_key, show_percentage=True)
             if recved == b'loadall':
                 version = recvhuge_secure(client, encryption_key).decode("utf-8")
-                parent_dir = os.path.join(master_directory, project_name, version)
+                parent_dir = prevent_path_injection(os.path.join(master_directory, project_name, version))
                 sendhuge_secure(client, f"{len(os.listdir(parent_dir))}".encode("utf-8"), encryption_key)
                 for filename in os.listdir(parent_dir):
-                    abspath = os.path.join(parent_dir, filename)
+                    abspath = prevent_path_injection(os.path.join(parent_dir, filename))
                     sendhuge_secure(client, filename.encode("utf-8"), encryption_key)
                     with open(abspath, "rb") as f:
                         sendhuge_secure(client, f.read(), encryption_key, show_percentage=True)
             if recved == b"!load":
                 version = recvhuge(client).decode("utf-8")
                 filename = recvhuge(client).decode("utf-8")
-                with open(os.path.join(master_directory, project_name, version, filename), "rb") as f:
+                with open(prevent_path_injection(os.path.join(master_directory, project_name, version, filename)), "rb") as f:
                     sendhuge(client, f.read())
             if recved == b'!loadall':
                 version = recvhuge(client).decode("utf-8")
-                parent_dir = os.path.join(master_directory, project_name, version)
+                parent_dir = prevent_path_injection(os.path.join(master_directory, project_name, version))
                 sendhuge(client, f"{len(os.listdir(parent_dir))}".encode("utf-8"))
                 for filename in os.listdir(parent_dir):
-                    abspath = os.path.join(parent_dir, filename)
+                    abspath = prevent_path_injection(os.path.join(parent_dir, filename))
                     sendhuge(client, filename.encode("utf-8"))
                     with open(abspath, "rb") as f:
                         sendhuge(client, f.read())
             if recved == b"delv":
                 version = recvhuge_secure(client, encryption_key).decode("utf-8")
-                shutil.rmtree(os.path.join(master_directory, project_name, version))
+                shutil.rmtree(prevent_path_injection(os.path.join(master_directory, project_name, version)))
             if recved == b"delf":
                 version = recvhuge_secure(client, encryption_key).decode("utf-8")
                 filename = recvhuge_secure(client, encryption_key).decode("utf-8")
-                os.remove(os.path.join(master_directory, project_name, version, filename))
+                os.remove(prevent_path_injection(os.path.join(master_directory, project_name, version, filename)))
             if recved == b"delp":
                 proj = recvhuge_secure(client, encryption_key).decode("utf-8")
                 if proj == "versionControl":
                     continue
-                shutil.rmtree(os.path.join(master_directory, proj))
+                shutil.rmtree(prevent_path_injection(os.path.join(master_directory, proj)))
             if recved == b"setproj":
                 project_name = recvhuge_secure(client, encryption_key).decode("utf-8")
             if recved == b"getcwproj":
                 sendhuge_secure(client, project_name.encode("utf-8"), encryption_key)
             if recved == b"tree":
-                treestr = tree_dir(master_directory)
+                treestr = tree_dir_ordered(master_directory)
                 sendhuge_secure(client, treestr.encode("utf-8"), encryption_key)
             if recved == b"listproj":
-                treestr = tree_dir(os.path.join(master_directory, project_name))
+                treestr = tree_dir_ordered(prevent_path_injection(os.path.join(master_directory, project_name)), show_top_dir=True)
                 sendhuge_secure(client, treestr.encode("utf-8"), encryption_key)
             if recved == b"listprojs":
                 projects = sorted(os.listdir(master_directory))
@@ -332,9 +354,14 @@ def handle_client(client, address):
                     sendhuge_secure(client, f.read(), encryption_key)
             if recved == b'updateserver':
                 latest_version = find_latest(master_directory, "versionControl")
-                with open(__file__, "r") as f:
-                    top_line = f.readline().replace("\n", "")
-                sendhuge_secure(client, pickle.dumps((top_line, latest_version)), encryption_key)
+                with open(os.path.join(master_directory, "versionControl", latest_version, "server.py"), "rb") as f:
+                    content = f.read()
+                found_n_bytes = len(content)
+                with open(__file__, "rb") as f:
+                    content = f.read()
+                top_line = content.decode("utf-8").split("\n")[0]
+                current_n_bytes = len(content)
+                sendhuge_secure(client, pickle.dumps(((top_line, current_n_bytes), (latest_version, found_n_bytes))), encryption_key)
                 if recvhuge_secure(client, encryption_key).decode("utf-8") == "y":
                     with open(os.path.join(master_directory, "versionControl", latest_version, "server.py"), "rb") as f:
                         content = f.read()

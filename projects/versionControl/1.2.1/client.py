@@ -459,8 +459,8 @@ while True:
         sendhuge_secure(client, "exit".encode("utf-8"), encryption_key)
         sys.exit()
     if cmd == "updateserver":
-        top_line, latest_version = pickle.loads(recvhuge_secure(client, encryption_key))
-        print_warning(f"update server?\nCurrent version: {top_line}\nFound latest version: {latest_version}")
+        (top_line, current_n_bytes), (latest_version, latest_n_bytes) = pickle.loads(recvhuge_secure(client, encryption_key))
+        print_warning(f"update server?\nCurrent version: {top_line} {current_n_bytes}B\nFound latest version: {latest_version} {latest_n_bytes}B")
         sendhuge_secure(client, input_prompt("(y/n) -> ", sub=True).encode("utf-8"), encryption_key)
         print_info(recvhuge_secure(client, encryption_key).decode("utf-8"))
     if cmd == "exit":

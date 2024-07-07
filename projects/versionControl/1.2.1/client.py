@@ -7,10 +7,52 @@ import json
 import hashlib
 from math import ceil
 from getpass import getpass
-import numpy as np
 import pickle
+import numpy as np
+import colorama
+from colorama import Fore, Style
+from tqdm import tqdm
+from enum import Enum
+
+colorama.init()
 
 config_file_path = os.path.join(os.getcwd(), ".versionControl")
+
+class Colors(Enum):
+    SUCCESS = Fore.LIGHTGREEN_EX
+    FAILED = Fore.LIGHTRED_EX
+    INFO = Fore.LIGHTMAGENTA_EX
+    WARNING = Fore.LIGHTYELLOW_EX
+    PROMPT = Fore.LIGHTBLUE_EX
+    PROMPT_SUB = Fore.CYAN
+    
+PROGRESS_BAR_FORMAT = '{l_bar}{bar:20}{r_bar}'
+
+def print_success(message):
+    print(f"{Colors.SUCCESS.value}{Style.BRIGHT}{message}{Style.RESET_ALL}")
+
+def print_failed(message):
+    print(f"{Colors.FAILED.value}{Style.BRIGHT}{message}{Style.RESET_ALL}")
+
+def print_info(message, bold=False):
+    if bold:
+        print(f"{Colors.INFO.value}{Style.BRIGHT}{message}{Style.RESET_ALL}")
+    else:
+        print(f"{Colors.INFO.value}{message}{Style.RESET_ALL}")
+
+def input_prompt(message, sub=False):
+    value = input(f"{Colors.PROMPT_SUB.value if sub else Colors.PROMPT.value}{Style.BRIGHT}{message}")
+    print(Style.RESET_ALL, end="")
+    return value
+
+def print_warning(message, bold=False):
+    if bold:
+        print(f"{Colors.WARNING.value}{Style.BRIGHT}{message}{Style.RESET_ALL}")
+    else:
+        print(f"{Colors.WARNING.value}{message}{Style.RESET_ALL}")
+
+def print_colored(message, color, bold=False, end="\n"):
+    print(f"{color}{Style.BRIGHT if bold else ''}{message}{Style.RESET_ALL}", end=end)
 
 def sendhuge(client, data) -> None:
     length = len(data)
@@ -26,18 +68,24 @@ def sendhuge_secure(client, data, key, show_percentage=False) -> None:
     packet_size = ceil((4096 - key_length * 2) / key_length) * key_length
     
     key_to_apply = np.frombuffer((key * ceil(length / key_length))[:packet_size], dtype=np.uint8)
-    for i in range(0, length, packet_size):
-        raw_bytes = np.frombuffer(data[i: i+packet_size], dtype=np.uint8)
-        if i + packet_size >= length:
-            sending_bytes = raw_bytes + key_to_apply[:len(raw_bytes)]
-        else:
-            sending_bytes = raw_bytes + key_to_apply
-        client.sendall(sending_bytes)
-        if show_percentage:
-            precentage = i/length*100
-            print(f"\r{precentage:.3f} %", end="")
     if show_percentage:
-        print("\r100 %")
+        for i in tqdm(range(0, length, packet_size), bar_format=PROGRESS_BAR_FORMAT):
+            raw_bytes = np.frombuffer(data[i: i+packet_size], dtype=np.uint8)
+            if i + packet_size >= length:
+                sending_bytes = raw_bytes + key_to_apply[:len(raw_bytes)]
+            else:
+                sending_bytes = raw_bytes + key_to_apply
+            client.sendall(sending_bytes)
+    else:
+        for i in range(0, length, packet_size):
+            raw_bytes = np.frombuffer(data[i: i+packet_size], dtype=np.uint8)
+            if i + packet_size >= length:
+                sending_bytes = raw_bytes + key_to_apply[:len(raw_bytes)]
+            else:
+                sending_bytes = raw_bytes + key_to_apply
+            client.sendall(sending_bytes)
+    if show_percentage:
+        print_success(f"sent {length} bytes")
 def recvhuge(client) -> bytes:
     length = b""
     while True:
@@ -104,15 +152,18 @@ def recvfile(client, path) -> int:
     print(f"receiving {length} bytes")
     file = open(path, "wb")
     total_length = 0
-    while True:
-        packet = client.recv(length - total_length)
-        file.write(packet)
-        total_length += len(packet)
-        if total_length == length:
-            break
-        precentage = total_length/length*100
-        print(f"\r{precentage} %", end="")
-    print(f"\rreceived {length} bytes in {time.perf_counter() - start_time:.3f}s\n")
+    with tqdm(total=length, bar_format=PROGRESS_BAR_FORMAT) as pbar:
+        while True:
+            packet = client.recv(length - total_length)
+            file.write(packet)
+            total_length += len(packet)
+            
+            pbar.n = total_length
+            pbar.refresh()
+            
+            if total_length == length:
+                break
+    print_success(f"\rreceived {length} bytes in {time.perf_counter() - start_time:.3f}s\n")
     return length
 
 def recvfile_secure(client, path, key) -> int:
@@ -133,24 +184,27 @@ def recvfile_secure(client, path, key) -> int:
     buffer = b""
     optimal_packet_size = ceil((4096 - key_length * 2) / key_length) * key_length
     total_length = 0
-    with open(path, "wb") as file:
-        while True:
-            #print(f"length: {length} total: {total_length}", end="\r")
-            if len(client.recv(length - total_length, socket.MSG_PEEK)) >= optimal_packet_size:
-                buffer = client.recv(optimal_packet_size)
-                total_length += len(buffer)
-                key_to_apply = key * (len(buffer) // key_length)
-                file.write((np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes())
-            elif length - total_length < optimal_packet_size and len(client.recv(length - total_length, socket.MSG_PEEK)) == length - total_length:
-                buffer = client.recv(length - total_length)
-                total_length += len(buffer)
-                key_to_apply = (key * ceil(len(buffer) / key_length))[:len(buffer)]
-                file.write((np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes())
-            if total_length == length:
-                break
-            precentage = total_length/length*100
-            print(f"\r{precentage:.2f} %", end="")
-    print(f"\rreceived {length} bytes in {time.perf_counter() - start_time:.3f}s")
+    with tqdm(total=length, bar_format=PROGRESS_BAR_FORMAT) as pbar:
+        with open(path, "wb") as file:
+            while True:
+                #print(f"length: {length} total: {total_length}", end="\r")
+                if len(client.recv(length - total_length, socket.MSG_PEEK)) >= optimal_packet_size:
+                    buffer = client.recv(optimal_packet_size)
+                    total_length += len(buffer)
+                    key_to_apply = key * (len(buffer) // key_length)
+                    file.write((np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes())
+                elif length - total_length < optimal_packet_size and len(client.recv(length - total_length, socket.MSG_PEEK)) == length - total_length:
+                    buffer = client.recv(length - total_length)
+                    total_length += len(buffer)
+                    key_to_apply = (key * ceil(len(buffer) / key_length))[:len(buffer)]
+                    file.write((np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes())
+    
+                pbar.n = total_length
+                pbar.refresh()
+
+                if total_length == length:
+                    break
+    print_success(f"\rreceived {length} bytes in {time.perf_counter() - start_time:.3f}s")
     return length
 
 def sendfile(client, path):
@@ -184,24 +238,26 @@ create_config_file(config_file_path, {"proj": "versionControl", "ip": "not set",
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.settimeout(3)
 
-ip = input("ip (leave blank for default): ")
+ip = input_prompt("ip (leave blank for default): ")
 if ip == "":
     ip = load_config_values("ip")
     if ip == "not set":
-        print("default ip still not specified")
+        print_info("default ip still not specified")
         sys.exit()
     port = load_config_values("port")
     
 else:
-    port = int(input("port: "))
+    port = int(input_prompt("port: "))
 ip = ip.replace("lan", "192.168")
 
+print()
 try:
+    print(f"connecting to {ip}:{port}")
     client.connect((ip, port))
 except socket.timeout:
-    print(f"no response from {ip}:{port}")
+    print_failed("no response")
     sys.exit()
-client.settimeout(None)
+client.settimeout(10)
 cwd = os.getcwd()
 
 
@@ -222,8 +278,8 @@ if hasAuth:
     encryption_key = getpass().encode("utf-8")
     sendhuge(client, hashlib.sha256(encryption_key).hexdigest().encode("utf-8"))
     authResult = recvhuge(client).decode("utf-8")
-    print(authResult)
-    if authResult == "denied":
+    if authResult != "granted":
+        print_failed("authentication failed")
         sys.exit()
 
 cwproj = load_config_values("proj")
@@ -231,19 +287,19 @@ cwproj = load_config_values("proj")
 sendhuge_secure(client, b'setproj', encryption_key)
 sendhuge_secure(client, cwproj.encode("utf-8"), encryption_key)
 print()
-print("---------- connected -----------")
-print(f" server:  {ip}:{port}")
-print(f" project: {cwproj}")
+print_success("---------- connected -----------")
+print_success(f" server:  {ip}:{port}")
+print_success(f" project: {cwproj}")
 print()
 
 while True:
-    cmd = input(">> ")
+    cmd = input_prompt(">> ")
     if cmd == "":
         continue
     sendhuge_secure(client, cmd.encode("utf-8"), encryption_key)
     if cmd == "save":
-        version = input("version: ")
-        path = input("path: ")
+        version = input_prompt("version: ", sub=True)
+        path = input_prompt("path: ", sub=True)
         if not os.path.isabs(path):
             path = os.path.join(cwd, path)
         filename = os.path.split(path)[1]
@@ -251,8 +307,8 @@ while True:
         sendhuge_secure(client, filename.encode("utf-8"), encryption_key)
         sendfile_secure(client, path, encryption_key)
     if cmd == "saveall":
-        version = input("version: ")
-        directory = input("directory: ")
+        version = input_prompt("version: ", sub=True)
+        directory = input_prompt("directory: ", sub=True)
         if directory == "":
             directory = cwd
         files = [file for file in os.listdir(directory) if os.path.isfile(os.path.join(directory, file))]
@@ -262,19 +318,19 @@ while True:
             print(f"sending... {file} {i+1} / {len(files)}")
             sendhuge_secure(client, f"{file}".encode("utf-8"), encryption_key)
             sendfile_secure(client, os.path.join(directory, file), encryption_key)
-        print("sent")
-    if cmd == "save!":
-        version = input("version: ")
-        path = input("path: ")
+        print_success("sent")
+    if cmd == "!save":
+        version = input_prompt("version: ", sub=True)
+        path = input_prompt("path: ", sub=True)
         if not os.path.isabs(path):
             path = os.path.join(cwd, path)
         filename = os.path.split(path)[1]
         sendhuge(client, version.encode("utf-8"))
         sendhuge(client, filename.encode("utf-8"))
         sendfile(client, path)
-    if cmd == "saveall!":
-        version = input("version: ")
-        directory = input("directory: ")
+    if cmd == "!saveall":
+        version = input_prompt("version: ", sub=True)
+        directory = input_prompt("directory: ", sub=True)
         if directory == "":
             directory = cwd
         files = [file for file in os.listdir(directory) if os.path.isfile(os.path.join(directory, file))]
@@ -284,34 +340,35 @@ while True:
             print(f"sending... {file} {i+1} / {len(files)}")
             sendhuge(client, f"{file}".encode("utf-8"))
             sendfile(client, os.path.join(directory, file))
-        print("sent")
+        print_success("sent")
     if cmd == "load":
-        version = input("version: ")
-        filename = input("filename: ")
+        version = input_prompt("version: ", sub=True)
+        filename = input_prompt("filename: ", sub=True)
         sendhuge_secure(client, version.encode("utf-8"), encryption_key)
         sendhuge_secure(client, filename.encode("utf-8"), encryption_key)
         recvfile_secure(client, os.path.join(cwd, filename), encryption_key)
     if cmd == "loadall":
-        version = input("version: ")
-        directory = input("directory: ")
+        version = input_prompt("version: ", sub=True)
+        directory = input_prompt("directory: ", sub=True)
         if directory == "":
             directory = cwd
         sendhuge_secure(client, version.encode("utf-8"), encryption_key)
         numOfFiles = int(recvhuge_secure(client, encryption_key).decode("utf-8"))
         for i in range(numOfFiles):
             filename = recvhuge_secure(client, encryption_key).decode("utf-8")
-            print(f"receiving... {filename} {i+1} / {numOfFiles}")
+            print(f"receiving {filename} ({i+1}/{numOfFiles})")
             recvfile_secure(client, os.path.join(cwd, filename), encryption_key)
             print()
-    if cmd == "load!":
-        version = input("version: ")
-        filename = input("filename: ")
+        print_success(f"loaded {numOfFiles} files")
+    if cmd == "!load":
+        version = input_prompt("version: ", sub=True)
+        filename = input_prompt("filename: ", sub=True)
         sendhuge(client, version.encode("utf-8"))
         sendhuge(client, filename.encode("utf-8"))
         recvfile(client, os.path.join(cwd, filename))
-    if cmd == "loadall!":
-        version = input("version: ")
-        directory = input("directory: ")
+    if cmd == "!loadall":
+        version = input_prompt("version: ", sub=True)
+        directory = input_prompt("directory: ", sub=True)
         if directory == "":
             directory = cwd
         sendhuge(client, version.encode("utf-8"))
@@ -321,19 +378,20 @@ while True:
             print(f"receiving... {filename} {i+1} / {numOfFiles}")
             recvfile(client, os.path.join(cwd, filename))
             print()
+        print_success(f"loaded {numOfFiles} files")
     if cmd == "delf":
-        version = input("version: ")
-        filename = input("filename: ")
+        version = input_prompt("version: ", sub=True)
+        filename = input_prompt("filename: ", sub=True)
         sendhuge_secure(client, version.encode("utf-8"), encryption_key)
         sendhuge_secure(client, filename.encode("utf-8"), encryption_key)
     if cmd == "delv":
-        version = input("version: ")
+        version = input_prompt("version: ", sub=True)
         sendhuge_secure(client, version.encode("utf-8"), encryption_key)
     if cmd == "delp":
-        projName = input("project name: ")
+        projName = input_prompt("project name: ", sub=True)
         sendhuge_secure(client, projName.encode("utf-8"), encryption_key)
     if cmd == "setproj":
-        projName = input("project name: ")
+        projName = input_prompt("project name: ", sub=True)
         sendhuge_secure(client, projName.encode("utf-8"), encryption_key)
         update_config("proj", projName)
     if cmd == "tree":
@@ -346,7 +404,7 @@ while True:
         print()
         dirs = []
         files = []
-        for element in os.listdir(cwd):
+        for element in sorted(os.listdir(cwd)):
             if os.path.isfile(os.path.join(cwd, element)):
                 files.append(element)
             else:
@@ -357,7 +415,7 @@ while True:
             print(f"    {file}")
         print()
     if cmd == "cd":
-        targetDir = input("cd to -> ")
+        targetDir = input_prompt("cd to -> ", sub=True)
         if targetDir == "..":
             cwd = os.path.dirname(cwd)
             continue
@@ -365,45 +423,47 @@ while True:
         if os.path.isdir(result):
             cwd = result
         else:
-            print("path does not exist")
+            print_failed("path does not exist")
     if cmd == "getcwproj":
         print(recvhuge_secure(client, encryption_key).decode("utf-8"))
     if cmd == "getcwd":
         print(cwd)
     if cmd == "mkdir":
-        dirname = input("dirname: ")
+        dirname = input_prompt("dirname: ", sub=True)
         if dirname in os.listdir(cwd):
-            print("the name already exists in the directory")
+            print_failed("the name already exists in the directory")
             continue
         os.mkdir(os.path.join(cwd, dirname))
     if cmd == "help":
         server_cmds = pickle.loads(recvhuge_secure(client, encryption_key))
-        print("available server commands:")
+        print_info("available server commands:")
         for cmd in server_cmds:
-            print(f"    {cmd:<20}{server_cmds[cmd]}")
-        print("available local commands:")
+            print_info(f"    {cmd:<20}{server_cmds[cmd]}")
+        print_info("available local commands:")
         for cmd in localCommands:
-            print(f"    {cmd:<20}{localCommands[cmd]}")
+            print_info(f"    {cmd:<20}{localCommands[cmd]}")
     if cmd == "helpcmd":
-        command = input("command: ")
+        command = input_prompt("command: ", sub=True)
         sendhuge_secure(client, command.encode("utf-8"), encryption_key)
         help = recvhuge_secure(client, encryption_key).decode("utf-8")
         if help != "not found":
             print(help)
             continue
         if command not in localCommands:
-            print("command not found")
+            print_info("command not found")
             continue
         print(localCommands[command])
     if cmd == "update":
         recvfile_secure(client, __file__, encryption_key)
-        print("updated")
+        print_info("updated")
         sendhuge_secure(client, "exit".encode("utf-8"), encryption_key)
         sys.exit()
     if cmd == "updateserver":
         top_line, latest_version = pickle.loads(recvhuge_secure(client, encryption_key))
-        print(f"update server?\nCurrent version: {top_line}Found latest version: {latest_version}")
-        sendhuge_secure(client, input("(y/n) -> ").encode("utf-8"), encryption_key)
-        print(recvhuge_secure(client, encryption_key).decode("utf-8"))
+        print_warning(f"update server?\nCurrent version: {top_line}\nFound latest version: {latest_version}")
+        sendhuge_secure(client, input_prompt("(y/n) -> ", sub=True).encode("utf-8"), encryption_key)
+        print_info(recvhuge_secure(client, encryption_key).decode("utf-8"))
     if cmd == "exit":
         sys.exit()
+        
+    print()

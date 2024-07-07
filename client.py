@@ -319,7 +319,7 @@ while True:
             sendhuge_secure(client, f"{file}".encode("utf-8"), encryption_key)
             sendfile_secure(client, os.path.join(directory, file), encryption_key)
         print_success("sent")
-    if cmd == "save!":
+    if cmd == "!save":
         version = input_prompt("version: ", sub=True)
         path = input_prompt("path: ", sub=True)
         if not os.path.isabs(path):
@@ -328,7 +328,7 @@ while True:
         sendhuge(client, version.encode("utf-8"))
         sendhuge(client, filename.encode("utf-8"))
         sendfile(client, path)
-    if cmd == "saveall!":
+    if cmd == "!saveall":
         version = input_prompt("version: ", sub=True)
         directory = input_prompt("directory: ", sub=True)
         if directory == "":
@@ -360,13 +360,13 @@ while True:
             recvfile_secure(client, os.path.join(cwd, filename), encryption_key)
             print()
         print_success(f"loaded {numOfFiles} files")
-    if cmd == "load!":
+    if cmd == "!load":
         version = input_prompt("version: ", sub=True)
         filename = input_prompt("filename: ", sub=True)
         sendhuge(client, version.encode("utf-8"))
         sendhuge(client, filename.encode("utf-8"))
         recvfile(client, os.path.join(cwd, filename))
-    if cmd == "loadall!":
+    if cmd == "!loadall":
         version = input_prompt("version: ", sub=True)
         directory = input_prompt("directory: ", sub=True)
         if directory == "":

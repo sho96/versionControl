@@ -259,12 +259,12 @@ def handle_client(client, address):
                     filename = recvhuge_secure(client, encryption_key).decode("utf-8")
                     create_sets(master_directory, project_name, version)
                     recvfile_secure(client, os.path.join(master_directory, project_name, version, filename), encryption_key)
-            if recved == b"save!":
+            if recved == b"!save":
                 version = recvhuge(client).decode("utf-8")
                 filename = recvhuge(client).decode("utf-8")
                 create_sets(master_directory, project_name, version)
                 recvfile(client, os.path.join(master_directory, project_name, version, filename))
-            if recved == b"saveall!":
+            if recved == b"!saveall":
                 version = recvhuge(client).decode("utf-8")
                 n_files = int(recvhuge(client).decode("utf-8"))
                 for _ in range(n_files):
@@ -285,12 +285,12 @@ def handle_client(client, address):
                     sendhuge_secure(client, filename.encode("utf-8"), encryption_key)
                     with open(abspath, "rb") as f:
                         sendhuge_secure(client, f.read(), encryption_key, show_percentage=True)
-            if recved == b"load!":
+            if recved == b"!load":
                 version = recvhuge(client).decode("utf-8")
                 filename = recvhuge(client).decode("utf-8")
                 with open(os.path.join(master_directory, project_name, version, filename), "rb") as f:
                     sendhuge(client, f.read())
-            if recved == b'loadall!':
+            if recved == b'!loadall':
                 version = recvhuge(client).decode("utf-8")
                 parent_dir = os.path.join(master_directory, project_name, version)
                 sendhuge(client, f"{len(os.listdir(parent_dir))}".encode("utf-8"))
@@ -384,10 +384,10 @@ available_commands = {
     "saveall": " Upload all files in the cwd to the server ",
     "load": " Download a file from the server ",
     "loadall": " Download files from a selected version to cwd ",
-    "save!": " fast but insecure version of `save` ",
-    "saveall!": " fast but insecure version of `saveall` ",
-    "load!": " fast but insecure version of `load` ",
-    "loadall!": " fast but insecure version of `loadall` ",
+    "!save": " fast but insecure version of `save` ",
+    "!saveall": " fast but insecure version of `saveall` ",
+    "!load": " fast but insecure version of `load` ",
+    "!loadall": " fast but insecure version of `loadall` ",
     "setproj": " Set the current working project ",
     "exit": " Exit ",
     "delv": " Delete version in the current project ",

@@ -1,1 +1,1 @@
-python " ~abs path to the client.py file~ "
+python3 " ~abs path to the client.py file~ "

@@ -276,7 +276,7 @@ def handle_client(client, address):
                 filename = recvhuge_secure(client, encryption_key).decode("utf-8")
                 create_sets(master_directory, project_name, version)
                 recvfile_secure(client, prevent_path_injection(os.path.join(master_directory, project_name, version, filename)), encryption_key)
-            if recved == b"saveall":
+            if recved == b"saveall" or recved == b"savechosen":
                 version = recvhuge_secure(client, encryption_key).decode("utf-8")
                 n_files = int(recvhuge_secure(client, encryption_key).decode("utf-8"))
                 for _ in range(n_files):
@@ -288,7 +288,7 @@ def handle_client(client, address):
                 filename = recvhuge(client).decode("utf-8")
                 create_sets(master_directory, project_name, version)
                 recvfile(client, prevent_path_injection(os.path.join(master_directory, project_name, version, filename)))
-            if recved == b"!saveall":
+            if recved == b"!saveall" or recved == b"!savechosen":
                 version = recvhuge(client).decode("utf-8")
                 n_files = int(recvhuge(client).decode("utf-8"))
                 for _ in range(n_files):
@@ -410,10 +410,12 @@ create_dir(master_directory)
 
 available_commands = {
     "save": " Upload a file to the server ",
+    "savechosen": " Upload selected files to the server ",
     "saveall": " Upload all files in the cwd to the server ",
     "load": " Download a file from the server ",
     "loadall": " Download files from a selected version to cwd ",
     "!save": " fast but insecure version of `save` ",
+    "!savechosen": " fast but insecure version of `savechosen` ",
     "!saveall": " fast but insecure version of `saveall` ",
     "!load": " fast but insecure version of `load` ",
     "!loadall": " fast but insecure version of `loadall` ",

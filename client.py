@@ -45,6 +45,31 @@ def input_prompt(message, sub=False):
     print(Style.RESET_ALL, end="")
     return value
 
+def input_files(message="enter path (leave blank to continue): ", not_found="File not found"):
+    files = []
+    cwd = os.getcwd()
+    while True:
+        print()
+        print("selected files: ")
+        for i, file in enumerate(files):
+            print(f"    {i+1}. {file}")
+        print()
+
+        path = input_prompt(message, sub=True)
+        if path == "":
+            break
+        if os.path.isabs(path):
+            if not os.path.exists(path):
+                print_warning(not_found)
+                continue
+        else:
+            if not os.path.exists(os.path.join(cwd, path)):
+                print_warning(not_found)
+                continue
+        files.append(path)
+
+    return [os.path.abspath(path) for path in files]
+
 def print_warning(message, bold=False):
     if bold:
         print(f"{Colors.WARNING.value}{Style.BRIGHT}{message}{Style.RESET_ALL}")
@@ -244,19 +269,19 @@ create_config_file(config_file_path, {"proj": "versionControl", "ip": "not set",
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.settimeout(3)
 
-ip = input_prompt("ip (leave blank for default): ")
+ip = input_prompt("ip (leave blank for previous connection): ")
 if ip == "":
     ip = load_config_values("ip")
     if ip == "not set":
-        print_info("default ip still not specified")
+        print_info("no previous connection found")
         sys.exit()
     port = load_config_values("port")
-    
 else:
     port = int(input_prompt("port: "))
 ip = ip.replace("lan", "192.168")
 
 print()
+
 try:
     print(f"connecting to {ip}:{port}")
     client.connect((ip, port))
@@ -264,14 +289,12 @@ except socket.timeout:
     print_failed("no response")
     sys.exit()
 client.settimeout(10)
-cwd = os.getcwd()
-
 
 localCommands = {
-    "cd": " Change cwd ",
-    "mkdir": " Create directory ",
-    "ls": " List files in cwd ",
-    "getcwd": " Show current working directory ",
+    "cd": " Change cwd",
+    "mkdir": " Create directory",
+    "ls": " List files in cwd",
+    "getcwd": " Show current working directory",
 }
 
 update_config("ip", ip)
@@ -288,6 +311,7 @@ if hasAuth:
         print_failed("authentication failed")
         sys.exit()
 
+cwd = os.getcwd()
 cwproj = load_config_values("proj")
 
 sendhuge_secure(client, b'setproj', encryption_key)
@@ -312,6 +336,17 @@ while True:
         sendhuge_secure(client, version.encode("utf-8"), encryption_key)
         sendhuge_secure(client, filename.encode("utf-8"), encryption_key)
         sendfile_secure(client, path, encryption_key)
+    if cmd == "savechosen":
+        version = input_prompt("version: ", sub=True)
+        files = input_files()
+        sendhuge_secure(client, version.encode("utf-8"), encryption_key)
+        sendhuge_secure(client, f"{len(files)}".encode("utf-8"), encryption_key)
+        for i, file in enumerate(files):
+            print(f"sending... {i+1}/{len(files)} {file}")
+            sendhuge_secure(client, f"{os.path.basename(file)}".encode("utf-8"), encryption_key)
+            sendfile_secure(client, file, encryption_key)
+            print()
+        print_success(f"sent {len(files)} files")
     if cmd == "saveall":
         version = input_prompt("version: ", sub=True)
         directory = input_prompt("directory: ", sub=True)
@@ -321,10 +356,11 @@ while True:
         sendhuge_secure(client, version.encode("utf-8"), encryption_key)
         sendhuge_secure(client, f"{len(files)}".encode("utf-8"), encryption_key)
         for i, file in enumerate(files):
-            print(f"sending... {file} {i+1} / {len(files)}")
+            print(f"sending... {i+1}/{len(files)} {file}")
             sendhuge_secure(client, f"{file}".encode("utf-8"), encryption_key)
             sendfile_secure(client, os.path.join(directory, file), encryption_key)
-        print_success("sent")
+            print()
+        print_success(f"sent {len(files)} files")
     if cmd == "!save":
         version = input_prompt("version: ", sub=True)
         path = input_prompt("path: ", sub=True)
@@ -334,6 +370,17 @@ while True:
         sendhuge(client, version.encode("utf-8"))
         sendhuge(client, filename.encode("utf-8"))
         sendfile(client, path)
+    if cmd == "!savechosen":
+        version = input_prompt("version: ", sub=True)
+        files = input_files()
+        sendhuge(client, version.encode("utf-8"))
+        sendhuge(client, f"{len(files)}".encode("utf-8"))
+        for i, file in enumerate(files):
+            print(f"sending... {i+1}/{len(files)} {file}")
+            sendhuge(client, f"{os.path.basename(file)}".encode("utf-8"))
+            sendfile(client, file)
+            print()
+        print_success(f"sent {len(files)} files")
     if cmd == "!saveall":
         version = input_prompt("version: ", sub=True)
         directory = input_prompt("directory: ", sub=True)
@@ -343,10 +390,11 @@ while True:
         sendhuge(client, version.encode("utf-8"))
         sendhuge(client, f"{len(files)}".encode("utf-8"))
         for i, file in enumerate(files):
-            print(f"sending... {file} {i+1} / {len(files)}")
+            print(f"sending... {i+1}/{len(files)} {file}")
             sendhuge(client, f"{file}".encode("utf-8"))
             sendfile(client, os.path.join(directory, file))
-        print_success("sent")
+            print()
+        print_success(f"sent {len(files)} files")
     if cmd == "load":
         version = input_prompt("version: ", sub=True)
         filename = input_prompt("filename: ", sub=True)

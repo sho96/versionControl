@@ -29,9 +29,9 @@ def sendhuge_secure(client, data, key, show_percentage=False) -> None:
     for i in range(0, length, packet_size):
         raw_bytes = np.frombuffer(data[i: i+packet_size], dtype=np.uint8)
         if i + packet_size >= length:
-            sending_bytes = raw_bytes + key_to_apply[:len(raw_bytes)]
+            sending_bytes = raw_bytes ^ key_to_apply[:len(raw_bytes)]
         else:
-            sending_bytes = raw_bytes + key_to_apply
+            sending_bytes = raw_bytes ^ key_to_apply
         client.sendall(sending_bytes)
         if show_percentage:
             precentage = i/length*100
@@ -81,11 +81,11 @@ def recvhuge_secure(client, key) -> bytes:
         if len(client.recv(length - len(recved), socket.MSG_PEEK)) >= optimal_packet_size:
             buffer = client.recv(optimal_packet_size)
             key_to_apply = key * (len(buffer) // key_length)
-            recved += (np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes()
+            recved += (np.frombuffer(buffer, dtype=np.uint8) ^ np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes()
         elif length - len(recved) < optimal_packet_size and len(client.recv(length - len(recved), socket.MSG_PEEK)) == length - len(recved):
             buffer = client.recv(length - len(recved))
             key_to_apply = (key * ceil(len(buffer) / key_length))[:len(buffer)]
-            recved += (np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes()
+            recved += (np.frombuffer(buffer, dtype=np.uint8) ^ np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes()
         if len(recved) == length:
             break
         precentage = len(recved)/length*100
@@ -143,12 +143,12 @@ def recvfile_secure(client, path, key) -> int:
                 buffer = client.recv(optimal_packet_size)
                 total_length += len(buffer)
                 key_to_apply = key * (len(buffer) // key_length)
-                file.write((np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes())
+                file.write((np.frombuffer(buffer, dtype=np.uint8) ^ np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes())
             elif length - total_length < optimal_packet_size and len(client.recv(length - total_length, socket.MSG_PEEK)) == length - total_length:
                 buffer = client.recv(length - total_length)
                 total_length += len(buffer)
                 key_to_apply = (key * ceil(len(buffer) / key_length))[:len(buffer)]
-                file.write((np.frombuffer(buffer, dtype=np.uint8) - np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes())
+                file.write((np.frombuffer(buffer, dtype=np.uint8) ^ np.frombuffer(key_to_apply, dtype=np.uint8)).tobytes())
             if total_length == length:
                 break
             precentage = total_length/length*100
